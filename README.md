@@ -1,2 +1,3 @@
 # 360PanT
-This is the official implementation of "360PanT: Training-Free Text-Driven 360-Degree Panorama-to-Panorama Translation"
+360PanT: Training-Free Text-Driven 360-Degree Panorama-to-Panorama Translation \
+[Hai Wang](https://littlewhitesea.github.io/), [Jing-Hao Xue](https://www.homepages.ucl.ac.uk/~ucakjxu/)
