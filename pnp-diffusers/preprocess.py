@@ -182,6 +182,18 @@ class Preprocess(nn.Module):
 
         return rgb_reconstruction  # , latent_reconstruction
 
+    @torch.no_grad()
+    def extract_latents_without_recon(self, num_steps, data_path, save_path, timesteps_to_save,
+                        inversion_prompt='', extract_reverse=False):
+        self.scheduler.set_timesteps(num_steps)
+
+        cond = self.get_text_embeds(inversion_prompt, "")[1].unsqueeze(0)
+        image = self.load_img(data_path)
+        latent = self.encode_imgs(image)
+
+        inverted_x = self.inversion_func(cond, latent, save_path, save_latents=not extract_reverse,
+                                         timesteps_to_save=timesteps_to_save)
+
 
 def run(opt):
     # timesteps to save
@@ -206,14 +218,20 @@ def run(opt):
     os.makedirs(save_path, exist_ok=True)
 
     model = Preprocess(device, method= opt.method, sd_version=opt.sd_version, hf_key=None)
-    recon_image = model.extract_latents(data_path=opt.data_path,
+    # recon_image = model.extract_latents(data_path=opt.data_path,
+    #                                      num_steps=opt.steps,
+    #                                      save_path=save_path,
+    #                                      timesteps_to_save=timesteps_to_save,
+    #                                      inversion_prompt=opt.inversion_prompt,
+    #                                      extract_reverse=opt.extract_reverse)
+
+    # T.ToPILImage()(recon_image[0]).save(os.path.join(save_path, f'recon.jpg'))
+    model.extract_latents_without_recon(data_path=opt.data_path,
                                          num_steps=opt.steps,
                                          save_path=save_path,
                                          timesteps_to_save=timesteps_to_save,
                                          inversion_prompt=opt.inversion_prompt,
                                          extract_reverse=opt.extract_reverse)
-
-    T.ToPILImage()(recon_image[0]).save(os.path.join(save_path, f'recon.jpg'))
 
 
 if __name__ == "__main__":
