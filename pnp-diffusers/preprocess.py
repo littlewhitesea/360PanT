@@ -28,12 +28,13 @@ def get_timesteps(scheduler, num_inference_steps, strength, device):
 
 
 class Preprocess(nn.Module):
-    def __init__(self, device, sd_version='2.0', hf_key=None):
+    def __init__(self, device, method = '360PanT', sd_version='2.0', hf_key=None):
         super().__init__()
 
         self.device = device
         self.sd_version = sd_version
         self.use_depth = False
+        self.method = method
 
         print(f'[INFO] loading stable diffusion...')
         if hf_key is not None:
@@ -84,11 +85,22 @@ class Preprocess(nn.Module):
         return imgs
 
     def load_img(self, image_path):
-        # temp = Image.open(image_path).convert("RGB")
-        # pdb.set_trace()
         # image_pil = T.Resize(512)(Image.open(image_path).convert("RGB"))
-        image_pil = Image.open(image_path).convert("RGB")
-        image = T.ToTensor()(image_pil).unsqueeze(0).to(device)
+        if self.method == '360PanT':
+            image_pil = Image.open(image_path).convert("RGB")
+            width, height = image_pil.size  # Get image dimensions
+            left_half = image_pil.crop((0, 0, 3 * width // 4, height))
+            right_half = image_pil.crop((3 * width // 4, 0, width, height))
+            extended_image = Image.new("RGB", (width * 2, height))  # Create a blank canvas
+            extended_image.paste(right_half, (0, 0))
+            extended_image.paste(image_pil, (width // 4, 0))
+            extended_image.paste(left_half, (width + width // 4, 0))
+            image = T.ToTensor()(extended_image).unsqueeze(0).to(device)
+        elif self.method == 'PnP':
+            image_pil = Image.open(image_path).convert("RGB")
+            image = T.ToTensor()(image_pil).unsqueeze(0).to(device)
+        else:
+            raise ValueError(f"Invalid method: {self.method}") 
         return image
 
     @torch.no_grad()
@@ -193,7 +205,7 @@ def run(opt):
     save_path = os.path.join(opt.save_dir + extraction_path_prefix, os.path.splitext(os.path.basename(opt.data_path))[0])
     os.makedirs(save_path, exist_ok=True)
 
-    model = Preprocess(device, sd_version=opt.sd_version, hf_key=None)
+    model = Preprocess(device, method= opt.method, sd_version=opt.sd_version, hf_key=None)
     recon_image = model.extract_latents(data_path=opt.data_path,
                                          num_steps=opt.steps,
                                          save_path=save_path,
@@ -207,6 +219,8 @@ def run(opt):
 if __name__ == "__main__":
     device = 'cuda'
     parser = argparse.ArgumentParser()
+    parser.add_argument('--method', type=str,
+                        default='360PanT')
     parser.add_argument('--data_path', type=str,
                         default='data/horse.jpg')
     parser.add_argument('--save_dir', type=str, default='latents')
