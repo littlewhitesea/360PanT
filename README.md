@@ -4,6 +4,9 @@
 
 [Hai Wang](https://littlewhitesea.github.io/) • [Jing-Hao Xue](https://www.homepages.ucl.ac.uk/~ucakjxu/)
 
+[![Project](https://img.shields.io/badge/Project-Website-orange)](https://littlewhitesea.github.io/stitchdiffusion.github.io/)
+[![arXiv](https://img.shields.io/badge/arXiv-2310.18840-b31b1b.svg)](https://arxiv.org/abs/2310.18840)
+
 ### [Datasets](https://drive.google.com/file/d/1L6-zczpGk08J8ex1-p3Leb8XfmjMg8Qu/view?usp=sharing)
 
 ## Useful Tools
