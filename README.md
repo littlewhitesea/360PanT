@@ -1,4 +1,4 @@
-# 360PanT
+# 360PanT (WACV-2025)
 
 **360PanT: Training-Free Text-Driven 360-Degree Panorama-to-Panorama Translation**
 
