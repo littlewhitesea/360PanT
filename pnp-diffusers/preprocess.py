@@ -214,7 +214,11 @@ def run(opt):
     seed_everything(opt.seed)
 
     extraction_path_prefix = "_reverse" if opt.extract_reverse else "_forward"
-    save_path = os.path.join(opt.save_dir + extraction_path_prefix, os.path.splitext(os.path.basename(opt.data_path))[0])
+    if opt.method == '360PanT':
+        extended_img_name = os.path.splitext(os.path.basename(opt.data_path))[0] + '_extended'
+        save_path = os.path.join(opt.save_dir + extraction_path_prefix, extended_img_name)
+    else:
+        save_path = os.path.join(opt.save_dir + extraction_path_prefix, os.path.splitext(os.path.basename(opt.data_path))[0])
     os.makedirs(save_path, exist_ok=True)
 
     model = Preprocess(device, method= opt.method, sd_version=opt.sd_version, hf_key=None)
