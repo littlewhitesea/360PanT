@@ -13,7 +13,7 @@
 | Link | Description
 | --- | --- |
 [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/lshus/stitchdiffusion-colab/blob/main/colab_stitchdiffusion.ipynb) | Google Colab of 360PanT [which can be run on Tesla T4]
-[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/lshus/stitchdiffusion-colab/blob/main/colab_stitchdiffusion.ipynb) |
+[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/lshus/stitchdiffusion-colab/blob/main/colab_stitchdiffusion.ipynb) | Google Colab of 360PanT (F) [Which can be run on Nvidia L4]
 
 
 ### [Datasets](https://drive.google.com/file/d/1L6-zczpGk08J8ex1-p3Leb8XfmjMg8Qu/view?usp=sharing)
