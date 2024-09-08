@@ -15,9 +15,6 @@
 [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/lshus/stitchdiffusion-colab/blob/main/colab_stitchdiffusion.ipynb) | Google Colab of 360PanT (F) [Which can be run on Nvidia L4 (24GB)]
 [Datasets](https://drive.google.com/file/d/1L6-zczpGk08J8ex1-p3Leb8XfmjMg8Qu/view?usp=sharing) | 360PanoI-Pan2Pan and 360syn-Pan2Pan
 
-
-### [Datasets](https://drive.google.com/file/d/1L6-zczpGk08J8ex1-p3Leb8XfmjMg8Qu/view?usp=sharing)
-
 ## Useful Tools
 
 [360 panoramic images viewer](https://renderstuff.com/tools/360-panorama-web-viewer/): It could be used to view the synthesized 360-degree panorama.
