@@ -6,7 +6,6 @@
 
 [![Project](https://img.shields.io/badge/Project-Website-orange)](https://littlewhitesea.github.io/stitchdiffusion.github.io/)
 [![arXiv](https://img.shields.io/badge/arXiv-2310.18840-b31b1b.svg)](https://arxiv.org/abs/2310.18840)
-[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/lshus/stitchdiffusion-colab/blob/main/colab_stitchdiffusion.ipynb)
 
 ### Jupyter Notebook and Datasets
 
@@ -14,6 +13,7 @@
 | --- | --- |
 [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/lshus/stitchdiffusion-colab/blob/main/colab_stitchdiffusion.ipynb) | Google Colab of 360PanT [which can be run on Nvidia T4 (16G)]
 [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/lshus/stitchdiffusion-colab/blob/main/colab_stitchdiffusion.ipynb) | Google Colab of 360PanT (F) [Which can be run on Nvidia L4 (24GB)]
+[Datasets](https://drive.google.com/file/d/1L6-zczpGk08J8ex1-p3Leb8XfmjMg8Qu/view?usp=sharing) | 360PanoI-Pan2Pan and 360syn-Pan2Pan
 
 
 ### [Datasets](https://drive.google.com/file/d/1L6-zczpGk08J8ex1-p3Leb8XfmjMg8Qu/view?usp=sharing)
