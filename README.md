@@ -12,7 +12,7 @@
 
 [CLIP-score](https://github.com/OpenAI/CLIP): It contains Google Colab to calculate the CLIP-score.
 
-[DINO-score]()
+[DINO-score](): It contains Google Colab to calculate the DINO-score.
 
 
 ## Citation
