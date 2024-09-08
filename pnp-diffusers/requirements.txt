@@ -5,4 +5,3 @@ diffusers==0.17.1
 xformers==0.0.20
 transformers==4.30.2
 accelerate==0.20.3
-"jax[cuda12_pip]==0.4.23" -f https://storage.googleapis.com/jax-releases/jax_cuda_releases.html
