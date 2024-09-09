@@ -1,19 +1,12 @@
-# general
-seed: 1
-device: 'cuda'
-output_path: 'PNP-results/brown_photostudio_01_concated'
-
-# data
-image_path: 'data/brown_photostudio_01_concated.jpg'
-latents_path: 'latents_forward'
-
-# diffusion
-sd_version: '2.1'
+device: cuda
 guidance_scale: 7.5
+image_path: /content/360PanT/pnp-diffusers/data/neon_photostudio.jpg
+latents_path: latents_forward
 n_timesteps: 50
-prompt: a photo of watercolor painting indoor room
 negative_prompt: ugly, blurry, black, low res, unrealistic
-
-# pnp injection thresholds, ∈ [0, 1]
+output_path: PnP-results/neon_photostudio
 pnp_attn_t: 0.5
 pnp_f_t: 0.8
+prompt: origami of a photo of neon photostudio
+sd_version: '2.1'
+seed: 1

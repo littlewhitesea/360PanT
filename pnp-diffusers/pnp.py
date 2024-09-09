@@ -12,21 +12,17 @@ from transformers import logging
 from diffusers import DDIMScheduler, StableDiffusionPipeline
 
 from pnp_utils import *
-# from free_lunch_utils import *
-
-import torch.fft as fft
-
-import pdb
 
 # suppress partial model loading warning
 logging.set_verbosity_error()
 
 class PNP(nn.Module):
-    def __init__(self, config):
+    def __init__(self, config, method):
         super().__init__()
         self.config = config
         self.device = config["device"]
         sd_version = config["sd_version"]
+        self.method = method
 
         if sd_version == '2.1':
             model_key = "stabilityai/stable-diffusion-2-1-base"
@@ -53,7 +49,8 @@ class PNP(nn.Module):
         print('SD model loaded')
 
         # load image
-        self.image, self.eps = self.get_data()
+        # self.image, self.eps = self.get_data()
+        self.eps = self.get_data()
 
         self.text_embeds = self.get_text_embeds(config["prompt"], config["negative_prompt"])
         self.pnp_guidance_embeds = self.get_text_embeds("", "").chunk(2)[0]
@@ -82,18 +79,27 @@ class PNP(nn.Module):
             latent = 1 / 0.18215 * latent
             img = self.vae.decode(latent).sample
             img = (img / 2 + 0.5).clamp(0, 1)
+            if self.method == "360PanT":
+                img = img[:, :, :, 256:1280]
         return img
+
+    # @torch.autocast(device_type='cuda', dtype=torch.float32)
+    # def get_data(self):
+    #     # load image
+    #     image = Image.open(self.config["image_path"]).convert('RGB') 
+    #     # image = image.resize((512, 512), resample=Image.Resampling.LANCZOS)
+    #     image = T.ToTensor()(image).to(self.device)
+    #     # get noise
+    #     latents_path = os.path.join(self.config["latents_path"], os.path.splitext(os.path.basename(self.config["image_path"]))[0], f'noisy_latents_{self.scheduler.timesteps[0]}.pt')
+    #     noisy_latent = torch.load(latents_path).to(self.device)
+    #     return image, noisy_latent
 
     @torch.autocast(device_type='cuda', dtype=torch.float32)
     def get_data(self):
-        # load image
-        image = Image.open(self.config["image_path"]).convert('RGB') 
-        # image = image.resize((512, 512), resample=Image.Resampling.LANCZOS)
-        image = T.ToTensor()(image).to(self.device)
         # get noise
         latents_path = os.path.join(self.config["latents_path"], os.path.splitext(os.path.basename(self.config["image_path"]))[0], f'noisy_latents_{self.scheduler.timesteps[0]}.pt')
         noisy_latent = torch.load(latents_path).to(self.device)
-        return image, noisy_latent
+        return noisy_latent
 
     def get_views(self, panorama_height, panorama_width, window_size=[64,128], stride=16):
         panorama_height /= 8
@@ -115,33 +121,14 @@ class PNP(nn.Module):
         # register the time step and features in pnp injection modules
         source_latents = load_source_latents_t(t, os.path.join(self.config["latents_path"], os.path.splitext(os.path.basename(self.config["image_path"]))[0]))
 
-        count_t = torch.zeros_like(x)
-        value_t = torch.zeros_like(x)
-        views_t = self.get_views(512, 2048)
-
-        # initialize the values of latent_view_t and source_latents_view_t
-        latent_view_t = x[:, :, :, 64:192]
-        source_latents_view_t = source_latents[:, :, :, 64:192]
-
-        #### pre-denoising operations twice on the stitch block ####
-        for ii_md in range(2):
-            latent_view_t[:, :, :, 0:64] = x[:, :, :, 192:256] #left part of the stitch block
-            latent_view_t[:, :, :, 64:128] = x[:, :, :, 0:64] #right part of the stitch block
-
-            source_latents_view_t[:, :, :, 0:64] = source_latents[:, :, :, 192:256] #left part of the stitch block
-            source_latents_view_t[:, :, :, 64:128] = source_latents[:, :, :, 0:64] #right part of the stitch block
-
-
-            latent_model_input = torch.cat([source_latents_view_t] + ([latent_view_t] * 2))
-
+        if self.method == "PnP":
+            latent_model_input = torch.cat([source_latents] + ([x] * 2))
 
             register_time(self, t.item())
 
             # compute text embeddings
             text_embed_input = torch.cat([self.pnp_guidance_embeds, self.text_embeds], dim=0)
-            text_embed_input_inv = torch.zeros_like(text_embed_input)
 
-            # pdb.set_trace()
             # apply the denoising network
             noise_pred = self.unet(latent_model_input, t, encoder_hidden_states=text_embed_input)['sample']
 
@@ -149,53 +136,84 @@ class PNP(nn.Module):
             _, noise_pred_uncond, noise_pred_cond = noise_pred.chunk(3)
             noise_pred = noise_pred_uncond + self.config["guidance_scale"] * (noise_pred_cond - noise_pred_uncond)
 
-            # # compute the denoising step with the reference model
-            # denoised_latent = self.scheduler.step(noise_pred, t, x)['prev_sample']
-
             # compute the denoising step with the reference model
-            denoised_latent_view = self.scheduler.step(noise_pred, t, latent_view_t)['prev_sample']
+            denoised_latent = self.scheduler.step(noise_pred, t, x)['prev_sample']
 
-            value_t[:, :, :, 192:256] += denoised_latent_view[:, :, :, 0:64]
-            count_t[:, :, :, 192:256] += 1
+        elif self.method == "360PanT":
+        
+            count_t = torch.zeros_like(x)
+            value_t = torch.zeros_like(x)
+            views_t = self.get_views(512, 2048)
 
-            value_t[:, :, :, 0:64] += denoised_latent_view[:, :, :, 64:128]
-            count_t[:, :, :, 0:64] += 1
+            # initialize the values of latent_view_t and source_latents_view_t
+            latent_view_t = x[:, :, :, 64:192]
+            source_latents_view_t = source_latents[:, :, :, 64:192]
+
+            #### pre-denoising operations twice on the stitch block ####
+            for ii_md in range(2):
+                latent_view_t[:, :, :, 0:64] = x[:, :, :, 192:256] #left part of the stitch block
+                latent_view_t[:, :, :, 64:128] = x[:, :, :, 0:64] #right part of the stitch block
+
+                source_latents_view_t[:, :, :, 0:64] = source_latents[:, :, :, 192:256] #left part of the stitch block
+                source_latents_view_t[:, :, :, 64:128] = source_latents[:, :, :, 0:64] #right part of the stitch block
 
 
-        for h_start, h_end, w_start, w_end in views_t:
-            source_latents_view = source_latents[:, :, h_start:h_end, w_start:w_end]
-            x_view = x[:, :, h_start:h_end, w_start:w_end]
+                latent_model_input = torch.cat([source_latents_view_t] + ([latent_view_t] * 2))
 
 
-        # latent_model_input = torch.cat([source_latents] + ([x] * 2))
+                register_time(self, t.item())
 
-            latent_model_input = torch.cat([source_latents_view] + ([x_view] * 2))
+                # compute text embeddings
+                text_embed_input = torch.cat([self.pnp_guidance_embeds, self.text_embeds], dim=0)
+                text_embed_input_inv = torch.zeros_like(text_embed_input)
+
+                # apply the denoising network
+                noise_pred = self.unet(latent_model_input, t, encoder_hidden_states=text_embed_input)['sample']
+
+                # perform guidance
+                _, noise_pred_uncond, noise_pred_cond = noise_pred.chunk(3)
+                noise_pred = noise_pred_uncond + self.config["guidance_scale"] * (noise_pred_cond - noise_pred_uncond)
+
+                # compute the denoising step with the reference model
+                denoised_latent_view = self.scheduler.step(noise_pred, t, latent_view_t)['prev_sample']
+
+                value_t[:, :, :, 192:256] += denoised_latent_view[:, :, :, 0:64]
+                count_t[:, :, :, 192:256] += 1
+
+                value_t[:, :, :, 0:64] += denoised_latent_view[:, :, :, 64:128]
+                count_t[:, :, :, 0:64] += 1
 
 
-            register_time(self, t.item())
+            for h_start, h_end, w_start, w_end in views_t:
+                source_latents_view = source_latents[:, :, h_start:h_end, w_start:w_end]
+                x_view = x[:, :, h_start:h_end, w_start:w_end]
 
-            # compute text embeddings
-            text_embed_input = torch.cat([self.pnp_guidance_embeds, self.text_embeds], dim=0)
-            text_embed_input_inv = torch.zeros_like(text_embed_input)
+                latent_model_input = torch.cat([source_latents_view] + ([x_view] * 2))
 
-            # pdb.set_trace()
-            # apply the denoising network
-            noise_pred = self.unet(latent_model_input, t, encoder_hidden_states=text_embed_input)['sample']
 
-            # perform guidance
-            _, noise_pred_uncond, noise_pred_cond = noise_pred.chunk(3)
-            noise_pred = noise_pred_uncond + self.config["guidance_scale"] * (noise_pred_cond - noise_pred_uncond)
+                register_time(self, t.item())
 
-            # # compute the denoising step with the reference model
-            # denoised_latent = self.scheduler.step(noise_pred, t, x)['prev_sample']
+                # compute text embeddings
+                text_embed_input = torch.cat([self.pnp_guidance_embeds, self.text_embeds], dim=0)
+                text_embed_input_inv = torch.zeros_like(text_embed_input)
 
-            # compute the denoising step with the reference model
-            denoised_latent_view = self.scheduler.step(noise_pred, t, x_view)['prev_sample']
+                # apply the denoising network
+                noise_pred = self.unet(latent_model_input, t, encoder_hidden_states=text_embed_input)['sample']
 
-            value_t[:, :, h_start:h_end, w_start:w_end] += denoised_latent_view
-            count_t[:, :, h_start:h_end, w_start:w_end] += 1
+                # perform guidance
+                _, noise_pred_uncond, noise_pred_cond = noise_pred.chunk(3)
+                noise_pred = noise_pred_uncond + self.config["guidance_scale"] * (noise_pred_cond - noise_pred_uncond)
 
-        denoised_latent = torch.where(count_t > 0, value_t / count_t, value_t)
+                # compute the denoising step with the reference model
+                denoised_latent_view = self.scheduler.step(noise_pred, t, x_view)['prev_sample']
+
+                value_t[:, :, h_start:h_end, w_start:w_end] += denoised_latent_view
+                count_t[:, :, h_start:h_end, w_start:w_end] += 1
+
+            denoised_latent = torch.where(count_t > 0, value_t / count_t, value_t)
+
+        else:
+            raise ValueError(f"Invalid method: {self.method}")
 
         return denoised_latent
 
@@ -204,8 +222,6 @@ class PNP(nn.Module):
         self.conv_injection_timesteps = self.scheduler.timesteps[:conv_injection_t] if conv_injection_t >= 0 else []
         register_attention_control_efficient(self, self.qk_injection_timesteps)
         register_conv_control_efficient(self, self.conv_injection_timesteps)
-        # register_free_upblock2d(self, b1=1.4, b2=1.6, s1=0.9, s2=0.2)
-        # register_free_crossattn_upblock2d(self, b1=1.4, b2=1.6, s1=0.9, s2=0.2)
 
     def run_pnp(self):
         pnp_f_t = int(self.config["n_timesteps"] * self.config["pnp_f_t"])
@@ -227,7 +243,8 @@ class PNP(nn.Module):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('--config_path', type=str, default='/content/pnp-diffusers/config_pnp.yaml')
+    parser.add_argument('--method', type=str, default='360PanT')
+    parser.add_argument('--config_path', type=str, default='/content/360PanT/pnp-diffusers/config_pnp.yaml')
     opt = parser.parse_args()
     with open(opt.config_path, "r") as f:
         config = yaml.safe_load(f)
@@ -237,5 +254,5 @@ if __name__ == '__main__':
     
     seed_everything(config["seed"])
     print(config)
-    pnp = PNP(config)
+    pnp = PNP(config, opt.method)
     pnp.run_pnp()
