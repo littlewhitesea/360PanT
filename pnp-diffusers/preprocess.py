@@ -15,7 +15,7 @@ from pnp_utils import *
 import torchvision.transforms as T
 
 import pdb
-
+import cv2
 
 def get_timesteps(scheduler, num_inference_steps, strength, device):
     # get the original timestep using init_timestep
@@ -87,15 +87,18 @@ class Preprocess(nn.Module):
     def load_img(self, image_path):
         # image_pil = T.Resize(512)(Image.open(image_path).convert("RGB"))
         if self.method == '360PanT':
-            image_pil = Image.open(image_path).convert("RGB")
-            width, height = image_pil.size  # Get image dimensions
-            left_half = image_pil.crop((0, 0, 3 * width // 4, height))
-            right_half = image_pil.crop((3 * width // 4, 0, width, height))
-            extended_image = Image.new("RGB", (width * 2, height))  # Create a blank canvas
-            extended_image.paste(right_half, (0, 0))
-            extended_image.paste(image_pil, (width // 4, 0))
-            extended_image.paste(left_half, (width + width // 4, 0))
-            image = T.ToTensor()(extended_image).unsqueeze(0).to(device)
+            img = cv2.imread(image_path)
+
+            height, width = img.shape[:2]
+            left_half = img[:, :3 * width // 4]
+            right_half = img[:, 3 * width // 4:]
+
+            extended_image = cv2.hconcat([right_half, img, left_half])  # Horizontally concatenate
+            base_name, ext = os.path.splitext(image_path)
+            extended_path = f"{base_name}_extended{ext}"
+            cv2.imwrite(extended_path, extended_image)
+            image_pil = Image.open(extended_path).convert("RGB")
+            image = T.ToTensor()(image_pil).unsqueeze(0).to(device)
         elif self.method == 'PnP':
             image_pil = Image.open(image_path).convert("RGB")
             image = T.ToTensor()(image_pil).unsqueeze(0).to(device)
