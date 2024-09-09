@@ -97,7 +97,11 @@ class PNP(nn.Module):
     @torch.autocast(device_type='cuda', dtype=torch.float32)
     def get_data(self):
         # get noise
-        latents_path = os.path.join(self.config["latents_path"], os.path.splitext(os.path.basename(self.config["image_path"]))[0], f'noisy_latents_{self.scheduler.timesteps[0]}.pt')
+        if self.method == "360PanT":
+            latent_folder_name = os.path.splitext(os.path.basename(self.config["image_path"]))[0] + "_extended"
+            latents_path = os.path.join(self.config["latents_path"], latent_folder_name, f'noisy_latents_{self.scheduler.timesteps[0]}.pt')
+        else:
+            latents_path = os.path.join(self.config["latents_path"], os.path.splitext(os.path.basename(self.config["image_path"]))[0], f'noisy_latents_{self.scheduler.timesteps[0]}.pt')
         noisy_latent = torch.load(latents_path).to(self.device)
         return noisy_latent
 
@@ -118,10 +122,12 @@ class PNP(nn.Module):
 
     @torch.no_grad()
     def denoise_step(self, x, t):
-        # register the time step and features in pnp injection modules
-        source_latents = load_source_latents_t(t, os.path.join(self.config["latents_path"], os.path.splitext(os.path.basename(self.config["image_path"]))[0]))
 
         if self.method == "PnP":
+
+            # register the time step and features in pnp injection modules
+            source_latents = load_source_latents_t(t, os.path.join(self.config["latents_path"], os.path.splitext(os.path.basename(self.config["image_path"]))[0]))
+
             latent_model_input = torch.cat([source_latents] + ([x] * 2))
 
             register_time(self, t.item())
@@ -140,6 +146,10 @@ class PNP(nn.Module):
             denoised_latent = self.scheduler.step(noise_pred, t, x)['prev_sample']
 
         elif self.method == "360PanT":
+
+            # register the time step and features in pnp injection modules
+            latent_folder_name = os.path.splitext(os.path.basename(self.config["image_path"]))[0] + "_extended"
+            source_latents = load_source_latents_t(t, os.path.join(self.config["latents_path"], latent_folder_name))
         
             count_t = torch.zeros_like(x)
             value_t = torch.zeros_like(x)

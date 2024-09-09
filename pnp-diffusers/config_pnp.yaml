@@ -4,7 +4,7 @@ image_path: /content/360PanT/pnp-diffusers/data/neon_photostudio.jpg
 latents_path: latents_forward
 n_timesteps: 50
 negative_prompt: ugly, blurry, black, low res, unrealistic
-output_path: PnP-results/neon_photostudio
+output_path: 360PanT-results/neon_photostudio
 pnp_attn_t: 0.5
 pnp_f_t: 0.8
 prompt: origami of a photo of neon photostudio
