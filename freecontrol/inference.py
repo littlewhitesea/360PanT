@@ -17,6 +17,7 @@ from libs.utils.controlnet_processor import make_processor
 
 def freecontrol_generate(args):
     control_type = args.condition
+    used_approach = args.approach
 
     if not control_type == "None":
         processor = make_processor(control_type.lower())
@@ -36,7 +37,7 @@ def freecontrol_generate(args):
         'sd_config--pca_paths': [pca_basis_dict[args.sd_version][args.model_ckpt][args.pca_basis]],
 
         'data--inversion--prompt': args.inversion_prompt,
-        'data--inversion--fixed_size': [4*args.img_size, args.img_size],
+        'data--inversion--fixed_size': None,
 
         'guidance--pca_guidance--end_step': int(args.pca_guidance_steps * args.ddim_steps),
         'guidance--pca_guidance--weight': args.pca_guidance_weight,
@@ -70,36 +71,66 @@ def freecontrol_generate(args):
 
     inversion_config = config.data.inversion
 
+    # if used_approach == "360PanT_F":
+    #     img = processor(args.condition_image)
+    # elif used_approach == "FreeControl":
+    #     img = processor(args.condition_image)
+    # else:
+    #     raise ValueError(f"Invalid method: {used_approach}")
     img = processor(args.condition_image)
     if control_type == "scribble" or control_type == "canny":
         img = Image.fromarray(255 - np.array(img))
+      
+    if used_approach == "360PanT_F":
+        width_pano, height_pano = img.size  # Note: PIL uses (width, height) order
 
-    condition_image_latents = pipeline.invert(img=img, inversion_config=inversion_config)
+        left_width = 3 * width_pano // 4
+        right_width = width_pano - left_width
 
-    inverted_data = {"condition_input": [condition_image_latents], }
+        left_half = img.crop((0, 0, left_width, height_pano))
+        right_half = img.crop((left_width, 0, width_pano, height_pano))
 
-    g = torch.Generator()
-    g.manual_seed(config.sd_config.seed)
+        extended_image = Image.new('RGB', (width_pano + left_width + right_width, height_pano))
+        extended_image.paste(right_half, (0, 0))
+        extended_image.paste(img, (right_width, 0))
+        extended_image.paste(left_half, (right_width + width_pano, 0))
+        img = extended_image
 
-    img_list = pipeline(prompt=config.sd_config.prompt,
-                        negative_prompt=config.sd_config.negative_prompt,
-                        num_inference_steps=config.sd_config.steps,
-                        generator=g,
-                        config=config,
-                        inverted_data=inverted_data)[0]
-
-    if control_type != "None":
-        img_list.insert(0, img)
-
-    # timestamp = time.strftime("%Y%m%d-%H%M%S")
-    output_folder = os.path.join("output_images", config.sd_config.prompt)
+    img_name = os.path.splitext(os.path.basename(args.condition_image))[0]
+    img_save_folder_name = used_approach + "-" + img_name + "-" + config.sd_config.prompt
+    output_folder = os.path.join("output_images", img_save_folder_name)
     os.makedirs(output_folder, exist_ok=True)
+    
+    image_path = os.path.join(output_folder, "output_image_test.png")
+    img.save(image_path)
 
-    for idx, image in enumerate(img_list):
-        # image.save(f"output_image_{idx}.png")
-        image_path = os.path.join(output_folder, f"output_image_{idx}.png")
-        image.save(image_path)
-    print("Images saved as output_image_0.png, output_image_1.png, etc.")
+
+    # condition_image_latents = pipeline.invert(img=img, inversion_config=inversion_config)
+
+    # inverted_data = {"condition_input": [condition_image_latents], }
+
+    # g = torch.Generator()
+    # g.manual_seed(config.sd_config.seed)
+
+    # img_list = pipeline(prompt=config.sd_config.prompt,
+    #                     negative_prompt=config.sd_config.negative_prompt,
+    #                     num_inference_steps=config.sd_config.steps,
+    #                     generator=g,
+    #                     config=config,
+    #                     inverted_data=inverted_data)[0]
+
+    # if control_type != "None":
+    #     img_list.insert(0, img)
+
+    # # timestamp = time.strftime("%Y%m%d-%H%M%S")
+    # output_folder = os.path.join("output_images", config.sd_config.prompt)
+    # os.makedirs(output_folder, exist_ok=True)
+
+    # for idx, image in enumerate(img_list):
+    #     # image.save(f"output_image_{idx}.png")
+    #     image_path = os.path.join(output_folder, f"output_image_{idx}.png")
+    #     image.save(image_path)
+    # print("Images saved as output_image_0.png, output_image_1.png, etc.")
 
 
 def load_ckpt_pca_list(config_path='config/gradio_info.yaml'):
@@ -136,6 +167,7 @@ def main():
 
     parser = argparse.ArgumentParser(description='FreeControl Image Generation')
 
+    parser.add_argument('--approach', type=str, default='360PanT_F')
     parser.add_argument('--condition_image', type=str, required=True, help='Path to the condition image')
     parser.add_argument('--prompt', type=str, required=True, help='Generation prompt')
     parser.add_argument('--scale', type=float, default=7.5, help='Guidance scale')
@@ -157,7 +189,7 @@ def main():
     parser.add_argument('--pca_basis', type=str, required=True, help='PCA basis')
     parser.add_argument('--inversion_prompt', type=str, required=True, help='Inversion prompt')
     parser.add_argument('--condition', type=str, default="None", help='Condition type')
-    parser.add_argument('--img_size', type=int, default=512, help='Image size')
+    # parser.add_argument('--img_size', type=int, default=512, help='Image size')
 
     args = parser.parse_args()
 

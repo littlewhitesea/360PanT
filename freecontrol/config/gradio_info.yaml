@@ -3,4 +3,5 @@ checkpoints:
     naive:
       path: stabilityai/stable-diffusion-2-1
       pca_basis:
-        room_step_200_sample_20_id_0: dataset/basis/2.1_base/naive/room/step_200_sample_20_id_0/pca_info.pt
+        indoors_step_200_sample_20_id_0: dataset/basis/2.1_base/naive/indoors/step_200_sample_20_id_0/pca_info.pt
+        outdoors_step_200_sample_20_id_0: dataset/basis/2.1_base/naive/outdoors/step_200_sample_20_id_0/pca_info.pt
