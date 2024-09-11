@@ -1,2 +1,5 @@
 pnp-diffusers/__pycache__/
 freecontrol/__pycache__/
+freecontrol/libs/model/__pycache__/
+freecontrol/libs/model/module/__pycache__/
+freecontrol/libs/utils/__pycache__/
