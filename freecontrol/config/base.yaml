@@ -3,6 +3,7 @@ sd_config:
   H: 512                          # Generated image weight
   W: 512                          # Generated image height
   steps: 200                      # Diffusion scale
+  approach : ""                   # FreeControl or 360PanT (F) 
   guidance_scale: 7.5             # Classifier-free guidance scale
   grad_guidance_scale: 1          # Gradient guidance scale, it will be multiplied with the weight in each type of guidance
   sd_version: '2.1'               # choice from ['2,1'|'2.0'|'1.4']

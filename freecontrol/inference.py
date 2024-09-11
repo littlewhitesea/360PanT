@@ -27,6 +27,7 @@ def freecontrol_generate(args):
     model_path = model_dict[args.sd_version][args.model_ckpt]['path']
 
     gradio_update_parameter = {
+        'sd_config--approach': args.approach,
         'sd_config--guidance_scale': args.scale,
         'sd_config--steps': args.ddim_steps,
         'sd_config--seed': args.seed,
