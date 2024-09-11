@@ -96,41 +96,44 @@ def freecontrol_generate(args):
         extended_image.paste(left_half, (right_width + width_pano, 0))
         img = extended_image
 
-    img_name = os.path.splitext(os.path.basename(args.condition_image))[0]
-    img_save_folder_name = used_approach + "-" + img_name + "-" + config.sd_config.prompt
-    output_folder = os.path.join("output_images", img_save_folder_name)
-    os.makedirs(output_folder, exist_ok=True)
+    # img_name = os.path.splitext(os.path.basename(args.condition_image))[0]
+    # img_save_folder_name = used_approach + "-" + img_name + "-" + config.sd_config.prompt
+    # output_folder = os.path.join("output_images", img_save_folder_name)
+    # os.makedirs(output_folder, exist_ok=True)
     
     image_path = os.path.join(output_folder, "output_image_test.png")
     img.save(image_path)
 
 
-    # condition_image_latents = pipeline.invert(img=img, inversion_config=inversion_config)
+    condition_image_latents = pipeline.invert(img=img, inversion_config=inversion_config)
 
-    # inverted_data = {"condition_input": [condition_image_latents], }
+    inverted_data = {"condition_input": [condition_image_latents], }
 
-    # g = torch.Generator()
-    # g.manual_seed(config.sd_config.seed)
+    g = torch.Generator()
+    g.manual_seed(config.sd_config.seed)
 
-    # img_list = pipeline(prompt=config.sd_config.prompt,
-    #                     negative_prompt=config.sd_config.negative_prompt,
-    #                     num_inference_steps=config.sd_config.steps,
-    #                     generator=g,
-    #                     config=config,
-    #                     inverted_data=inverted_data)[0]
+    img_list = pipeline(prompt=config.sd_config.prompt,
+                        negative_prompt=config.sd_config.negative_prompt,
+                        num_inference_steps=config.sd_config.steps,
+                        generator=g,
+                        config=config,
+                        inverted_data=inverted_data)[0]
 
-    # if control_type != "None":
-    #     img_list.insert(0, img)
+    if control_type != "None":
+        img_list.insert(0, img)
 
-    # # timestamp = time.strftime("%Y%m%d-%H%M%S")
+    # timestamp = time.strftime("%Y%m%d-%H%M%S")
     # output_folder = os.path.join("output_images", config.sd_config.prompt)
-    # os.makedirs(output_folder, exist_ok=True)
+    img_name = os.path.splitext(os.path.basename(args.condition_image))[0]
+    img_save_folder_name = used_approach + "-" + img_name + "-" + config.sd_config.prompt
+    output_folder = os.path.join("output_images", img_save_folder_name)
+    os.makedirs(output_folder, exist_ok=True)
 
-    # for idx, image in enumerate(img_list):
-    #     # image.save(f"output_image_{idx}.png")
-    #     image_path = os.path.join(output_folder, f"output_image_{idx}.png")
-    #     image.save(image_path)
-    # print("Images saved as output_image_0.png, output_image_1.png, etc.")
+    for idx, image in enumerate(img_list):
+        # image.save(f"output_image_{idx}.png")
+        image_path = os.path.join(output_folder, f"output_image_{idx}.png")
+        image.save(image_path)
+    print("Images saved as output_image_0.png, output_image_1.png, etc.")
 
 
 def load_ckpt_pca_list(config_path='config/gradio_info.yaml'):
