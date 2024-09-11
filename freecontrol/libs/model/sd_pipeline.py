@@ -106,6 +106,8 @@ class FreeControlSDPipeline(StableDiffusionPipeline):
         obj_pairs = self.input_config.sd_config.obj_pairs
         generate_prompt = prompt
 
+        used_approach = self.input_config.sd_config.approach
+
         obj_pairs = extract_data(obj_pairs)
         temp_pairs = list()
         for i in range(len(obj_pairs)):
@@ -234,9 +236,10 @@ class FreeControlSDPipeline(StableDiffusionPipeline):
         # Prepare guidance configs
         self.guidance_config = config.guidance
 
-        views_t = self.get_views(512, 2048)
-        count_t = torch.zeros_like(latents)
-        value_t = torch.zeros_like(latents)
+        # count_t = torch.zeros_like(latents)
+        # value_t = torch.zeros_like(latents)
+        # views_t = self.get_views(512, 2048)
+
 
         # 7. Denoising loop
         num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
@@ -245,73 +248,267 @@ class FreeControlSDPipeline(StableDiffusionPipeline):
             for i, t in enumerate(timesteps):
                 score = None
 
-                count_t.zero_()
-                value_t.zero_()
-                latents_view = latents[:, :, :, 64:192]
+                if used_approach == "360PanT_F":
 
-                assert do_classifier_free_guidance, "Currently only support classifier free guidance"
-                # Process the latent
-                step_timestep: int = t.detach().cpu().item()
-                assert step_timestep in inverted_data['condition_input'][0][
-                    'all_latents'].keys(), f"timestep {step_timestep} not in inverse samples keys"
-                data_samples_latent: torch.Tensor = inverted_data['condition_input'][0]['all_latents'][step_timestep]
-                data_samples_latent = data_samples_latent.to(device=self.running_device, dtype=prompt_embeds.dtype)
+                    # count_t.zero_()
+                    # value_t.zero_()
+                    count_t = torch.zeros_like(latents)
+                    value_t = torch.zeros_like(latents)
+                    views_t = self.get_views(512, 2048)
+                    latents_view = latents[:, :, :, 64:192]
 
-                if config.data.inversion.method == 'DDIM':
-                    if i == 0 and same_latent and config.sd_config.appearnace_same_latent:
-                        latents = data_samples_latent.repeat(2, 1, 1, 1)
-                    elif i == 0 and same_latent and not config.sd_config.appearnace_same_latent:
-                        latents = torch.cat([data_samples_latent, keep_latents], dim=0)
-                        print("Latents shape", latents.shape)
-                    latent_list: List[torch.Tensor] = [latents, data_samples_latent, latents]
+                    assert do_classifier_free_guidance, "Currently only support classifier free guidance"
+                    # Process the latent
+                    step_timestep: int = t.detach().cpu().item()
+                    assert step_timestep in inverted_data['condition_input'][0][
+                        'all_latents'].keys(), f"timestep {step_timestep} not in inverse samples keys"
+                    data_samples_latent: torch.Tensor = inverted_data['condition_input'][0]['all_latents'][step_timestep]
+                    data_samples_latent = data_samples_latent.to(device=self.running_device, dtype=prompt_embeds.dtype)
+
+                    if config.data.inversion.method == 'DDIM':
+                        if i == 0 and same_latent and config.sd_config.appearnace_same_latent:
+                            latents = data_samples_latent.repeat(2, 1, 1, 1)
+                        elif i == 0 and same_latent and not config.sd_config.appearnace_same_latent:
+                            latents = torch.cat([data_samples_latent, keep_latents], dim=0)
+                            print("Latents shape", latents.shape)
+                        latent_list: List[torch.Tensor] = [latents, data_samples_latent, latents]
+                    else:
+                        raise NotImplementedError("Currently only support DDIM method")
+
+                    latent_model_input: torch.Tensor = torch.cat(latent_list, dim=0).to('cuda')
+                    latent_model_input = self.scheduler.scale_model_input(latent_model_input, t).detach()
+
+                    latent_model_input_view = latent_model_input[:, :, :, 64:192]
+                    # pdb.set_trace()
+
+                    # process the prompt embedding
+                    if config.data.inversion.method == 'DDIM':
+                        ref_prompt_embeds = inverted_data['condition_input'][0]['prompt_embeds'].to('cuda')
+                        step_prompt_embeds_list: List[torch.Tensor] = [prompt_embeds.chunk(2)[0]] * 2 + [
+                            ref_prompt_embeds] + [prompt_embeds.chunk(2)[1]] * 2
+                    else:
+                        raise NotImplementedError("Currently only support DDIM method")
+
+                    step_prompt_embeds = torch.cat(step_prompt_embeds_list, dim=0).to('cuda')
+
+                    require_grad_flag = False
+                    # Check if the current step is in the guidance step
+                    if _in_step(self.guidance_config.pca_guidance, i):
+                        require_grad_flag = True
+
+                    #### pre-denoising operations twice on the stitch block ####
+                    for ii_md in range(2):
+
+                        latents_view[:, :, :, 0:64] = latents[:, :, :, 192:256] #left part of the stitch block
+                        latents_view[:, :, :, 64:128] = latents[:, :, :, 0:64] #right part of the stitch block
+
+                        latent_model_input_view = torch.cat([
+                            latent_model_input[:, :, :, 192:256], 
+                            latent_model_input[:, :, :, 0:64]     
+                        ], dim=3)
+
+                        # Only require grad when need to compute the gradient for guidance
+                        if require_grad_flag:
+                            latent_model_input_view.requires_grad_(True)
+                            # predict the noise residual
+                            # pdb.set_trace()
+                            noise_pred = self.unet(
+                                latent_model_input_view,
+                                t,
+                                encoder_hidden_states=step_prompt_embeds,
+                                cross_attention_kwargs=cross_attention_kwargs,
+                                return_dict=False,
+                            )[0]
+                        else:
+                            with torch.no_grad():
+                                noise_pred = self.unet(
+                                    latent_model_input_view,
+                                    t,
+                                    encoder_hidden_states=step_prompt_embeds,
+                                    cross_attention_kwargs=cross_attention_kwargs,
+                                    return_dict=False,
+                                )[0]
+
+                        # Compute loss
+                        loss = 0
+                        self.cross_seg = None
+                        if _in_step(self.guidance_config.cross_attn, i):
+                            # Compute the Cross-Attention loss and update the cross attention mask, Please don't delete this
+                            self.compute_cross_attn_mask(cond_control_ids, cond_example_ids, cond_appearance_ids)
+
+                        if _in_step(self.guidance_config.pca_guidance, i):
+                            # Compute the PCA structure and appearance guidance
+                            # Set the select feature to key by default
+                            try:
+                                select_feature = self.guidance_config.pca_guidance.select_feature
+                            except:
+                                select_feature = "key"
+
+                            if select_feature == 'query' or select_feature == 'key' or select_feature == 'value':
+                                pca_loss = self.compute_attn_pca_loss(cond_control_ids, cond_example_ids, cond_appearance_ids,
+                                                                      i)
+                                loss += pca_loss
+                            elif select_feature == 'conv':
+                                pca_loss = self.compute_conv_pca_loss(cond_control_ids, cond_example_ids, cond_appearance_ids,
+                                                                      i)
+                                loss += pca_loss
+
+                        temp_control_ids = None
+                        if isinstance(loss, torch.Tensor):
+                            gradient = torch.autograd.grad(loss, latent_model_input_view, allow_unused=True)[0]
+                            gradient = gradient[cond_control_ids]
+                            assert gradient is not None, f"Step {i}: grad is None"
+                            score = gradient.detach()
+                            temp_control_ids: List[int] = np.arange(num_control_samples).tolist()
+
+                        # perform guidance
+                        if do_classifier_free_guidance:
+                            # Remove the example samples
+                            noise_pred = noise_pred[keep_ids]
+                            noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
+                            noise_pred = noise_pred_uncond + guidance_scale * (noise_pred_text - noise_pred_uncond)
+
+                        if do_classifier_free_guidance and guidance_rescale > 0.0:
+                            # Based on 3.4. in https://arxiv.org/pdf/2305.08891.pdf
+                            noise_pred = rescale_noise_cfg(noise_pred, noise_pred_text, guidance_rescale=guidance_rescale)
+                        # compute the previous noisy sample x_t -> x_t-1
+                        latents_view = self.scheduler.step(noise_pred, t, latents_view, score=score,
+                                                      guidance_scale=self.input_config.sd_config.grad_guidance_scale,
+                                                      indices=temp_control_ids,
+                                                      **extra_step_kwargs, return_dict=False)[0].detach()
+
+                        value_t[:, :, :, 192:256] += latents_view[:, :, :, 0:64]
+                        count_t[:, :, :, 192:256] += 1
+
+                        value_t[:, :, :, 0:64] += latents_view[:, :, :, 64:128]
+                        count_t[:, :, :, 0:64] += 1
+
+
+                    for h_start, h_end, w_start, w_end in views_t:
+
+
+                        latents_view = latents[:, :, h_start:h_end, w_start:w_end]
+
+                        latent_model_input_view = latent_model_input[:, :, h_start:h_end, w_start:w_end]
+                        
+                      # Only require grad when need to compute the gradient for guidance
+                        if require_grad_flag:
+                            latent_model_input_view.requires_grad_(True)
+                            # predict the noise residual
+                            noise_pred = self.unet(
+                                latent_model_input_view,
+                                t,
+                                encoder_hidden_states=step_prompt_embeds,
+                                cross_attention_kwargs=cross_attention_kwargs,
+                                return_dict=False,
+                            )[0]
+                        else:
+                            with torch.no_grad():
+                                noise_pred = self.unet(
+                                    latent_model_input_view,
+                                    t,
+                                    encoder_hidden_states=step_prompt_embeds,
+                                    cross_attention_kwargs=cross_attention_kwargs,
+                                    return_dict=False,
+                                )[0]
+
+                        # Compute loss
+                        loss = 0
+                        self.cross_seg = None
+                        if _in_step(self.guidance_config.cross_attn, i):
+                            # Compute the Cross-Attention loss and update the cross attention mask, Please don't delete this
+                            self.compute_cross_attn_mask(cond_control_ids, cond_example_ids, cond_appearance_ids)
+
+                        if _in_step(self.guidance_config.pca_guidance, i):
+                            # Compute the PCA structure and appearance guidance
+                            # Set the select feature to key by default
+                            try:
+                                select_feature = self.guidance_config.pca_guidance.select_feature
+                            except:
+                                select_feature = "key"
+
+                            if select_feature == 'query' or select_feature == 'key' or select_feature == 'value':
+                                pca_loss = self.compute_attn_pca_loss(cond_control_ids, cond_example_ids, cond_appearance_ids,
+                                                                      i)
+                                loss += pca_loss
+                            elif select_feature == 'conv':
+                                pca_loss = self.compute_conv_pca_loss(cond_control_ids, cond_example_ids, cond_appearance_ids,
+                                                                      i)
+                                loss += pca_loss
+
+                        temp_control_ids = None
+                        if isinstance(loss, torch.Tensor):
+                            gradient = torch.autograd.grad(loss, latent_model_input_view, allow_unused=True)[0]
+                            gradient = gradient[cond_control_ids]
+                            assert gradient is not None, f"Step {i}: grad is None"
+                            score = gradient.detach()
+                            temp_control_ids: List[int] = np.arange(num_control_samples).tolist()
+
+                        # perform guidance
+                        if do_classifier_free_guidance:
+                            # Remove the example samples
+                            noise_pred = noise_pred[keep_ids]
+                            noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
+                            noise_pred = noise_pred_uncond + guidance_scale * (noise_pred_text - noise_pred_uncond)
+
+                        if do_classifier_free_guidance and guidance_rescale > 0.0:
+                            # Based on 3.4. in https://arxiv.org/pdf/2305.08891.pdf
+                            noise_pred = rescale_noise_cfg(noise_pred, noise_pred_text, guidance_rescale=guidance_rescale)
+                        # compute the previous noisy sample x_t -> x_t-1
+                        latents_view = self.scheduler.step(noise_pred, t, latents_view, score=score,
+                                                      guidance_scale=self.input_config.sd_config.grad_guidance_scale,
+                                                      indices=temp_control_ids,
+                                                      **extra_step_kwargs, return_dict=False)[0].detach()
+
+                        value_t[:, :, h_start:h_end, w_start:w_end] += latents_view
+                        count_t[:, :, h_start:h_end, w_start:w_end] += 1
+
+                    latents = torch.where(count_t > 0, value_t / count_t, value_t) 
+
                 else:
-                    raise NotImplementedError("Currently only support DDIM method")
 
-                latent_model_input: torch.Tensor = torch.cat(latent_list, dim=0).to('cuda')
-                latent_model_input = self.scheduler.scale_model_input(latent_model_input, t).detach()
+                    assert do_classifier_free_guidance, "Currently only support classifier free guidance"
+                    # Process the latent
+                    step_timestep: int = t.detach().cpu().item()
+                    assert step_timestep in inverted_data['condition_input'][0][
+                        'all_latents'].keys(), f"timestep {step_timestep} not in inverse samples keys"
+                    data_samples_latent: torch.Tensor = inverted_data['condition_input'][0]['all_latents'][step_timestep]
+                    data_samples_latent = data_samples_latent.to(device=self.running_device, dtype=prompt_embeds.dtype)
 
-                latent_model_input_view = latent_model_input[:, :, :, 64:192]
-                # pdb.set_trace()
+                    if config.data.inversion.method == 'DDIM':
+                        if i == 0 and same_latent and config.sd_config.appearnace_same_latent:
+                            latents = data_samples_latent.repeat(2, 1, 1, 1)
+                        elif i == 0 and same_latent and not config.sd_config.appearnace_same_latent:
+                            latents = torch.cat([data_samples_latent, keep_latents], dim=0)
+                            print("Latents shape", latents.shape)
+                        latent_list: List[torch.Tensor] = [latents, data_samples_latent, latents]
+                    else:
+                        raise NotImplementedError("Currently only support DDIM method")
 
-                # process the prompt embedding
-                if config.data.inversion.method == 'DDIM':
-                    ref_prompt_embeds = inverted_data['condition_input'][0]['prompt_embeds'].to('cuda')
-                    step_prompt_embeds_list: List[torch.Tensor] = [prompt_embeds.chunk(2)[0]] * 2 + [
-                        ref_prompt_embeds] + [prompt_embeds.chunk(2)[1]] * 2
-                else:
-                    raise NotImplementedError("Currently only support DDIM method")
+                    latent_model_input: torch.Tensor = torch.cat(latent_list, dim=0).to('cuda')
+                    latent_model_input = self.scheduler.scale_model_input(latent_model_input, t).detach()
 
-                step_prompt_embeds = torch.cat(step_prompt_embeds_list, dim=0).to('cuda')
+                    # process the prompt embedding
+                    if config.data.inversion.method == 'DDIM':
+                        ref_prompt_embeds = inverted_data['condition_input'][0]['prompt_embeds'].to('cuda')
+                        step_prompt_embeds_list: List[torch.Tensor] = [prompt_embeds.chunk(2)[0]] * 2 + [
+                            ref_prompt_embeds] + [prompt_embeds.chunk(2)[1]] * 2
+                    else:
+                        raise NotImplementedError("Currently only support DDIM method")
 
-                require_grad_flag = False
-                # Check if the current step is in the guidance step
-                if _in_step(self.guidance_config.pca_guidance, i):
-                    require_grad_flag = True
+                    step_prompt_embeds = torch.cat(step_prompt_embeds_list, dim=0).to('cuda')
 
-                #### pre-denoising operations twice on the stitch block ####
-                for ii_md in range(2):
-
-                    latents_view[:, :, :, 0:64] = latents[:, :, :, 192:256] #left part of the stitch block
-                    latents_view[:, :, :, 64:128] = latents[:, :, :, 0:64] #right part of the stitch block
-
-                    # latent_model_input_view[:, :, :, 0:64] = latent_model_input[:, :, :, 192:256].clone() #left part of the stitch block
-                    # latent_model_input_view[:, :, :, 64:128] = latent_model_input[:, :, :, 0:64].clone() #right part of the stitch block
-
-                    # left_part = latent_model_input[:, :, :, 192:256].clone()
-                    # right_part = latent_model_input[:, :, :, 0:64].clone()
-
-                    latent_model_input_view = torch.cat([
-                        latent_model_input[:, :, :, 192:256],  # No clone!
-                        latent_model_input[:, :, :, 0:64]     # No clone!
-                    ], dim=3)
+                    require_grad_flag = False
+                    # Check if the current step is in the guidance step
+                    if _in_step(self.guidance_config.pca_guidance, i):
+                        require_grad_flag = True
 
                     # Only require grad when need to compute the gradient for guidance
                     if require_grad_flag:
-                        latent_model_input_view.requires_grad_(True)
+                        latent_model_input.requires_grad_(True)
                         # predict the noise residual
-                        # pdb.set_trace()
                         noise_pred = self.unet(
-                            latent_model_input_view,
+                            latent_model_input,
                             t,
                             encoder_hidden_states=step_prompt_embeds,
                             cross_attention_kwargs=cross_attention_kwargs,
@@ -320,7 +517,7 @@ class FreeControlSDPipeline(StableDiffusionPipeline):
                     else:
                         with torch.no_grad():
                             noise_pred = self.unet(
-                                latent_model_input_view,
+                                latent_model_input,
                                 t,
                                 encoder_hidden_states=step_prompt_embeds,
                                 cross_attention_kwargs=cross_attention_kwargs,
@@ -353,7 +550,7 @@ class FreeControlSDPipeline(StableDiffusionPipeline):
 
                     temp_control_ids = None
                     if isinstance(loss, torch.Tensor):
-                        gradient = torch.autograd.grad(loss, latent_model_input_view, allow_unused=True)[0]
+                        gradient = torch.autograd.grad(loss, latent_model_input, allow_unused=True)[0]
                         gradient = gradient[cond_control_ids]
                         assert gradient is not None, f"Step {i}: grad is None"
                         score = gradient.detach()
@@ -370,100 +567,10 @@ class FreeControlSDPipeline(StableDiffusionPipeline):
                         # Based on 3.4. in https://arxiv.org/pdf/2305.08891.pdf
                         noise_pred = rescale_noise_cfg(noise_pred, noise_pred_text, guidance_rescale=guidance_rescale)
                     # compute the previous noisy sample x_t -> x_t-1
-                    latents_view = self.scheduler.step(noise_pred, t, latents_view, score=score,
+                    latents = self.scheduler.step(noise_pred, t, latents, score=score,
                                                   guidance_scale=self.input_config.sd_config.grad_guidance_scale,
                                                   indices=temp_control_ids,
                                                   **extra_step_kwargs, return_dict=False)[0].detach()
-
-                    value_t[:, :, :, 192:256] += latents_view[:, :, :, 0:64]
-                    count_t[:, :, :, 192:256] += 1
-
-                    value_t[:, :, :, 0:64] += latents_view[:, :, :, 64:128]
-                    count_t[:, :, :, 0:64] += 1
-
-
-                for h_start, h_end, w_start, w_end in views_t:
-
-
-                    latents_view = latents[:, :, h_start:h_end, w_start:w_end]
-
-                    latent_model_input_view = latent_model_input[:, :, h_start:h_end, w_start:w_end]
-                    
-                   # Only require grad when need to compute the gradient for guidance
-                    if require_grad_flag:
-                        latent_model_input_view.requires_grad_(True)
-                        # predict the noise residual
-                        noise_pred = self.unet(
-                            latent_model_input_view,
-                            t,
-                            encoder_hidden_states=step_prompt_embeds,
-                            cross_attention_kwargs=cross_attention_kwargs,
-                            return_dict=False,
-                        )[0]
-                    else:
-                        with torch.no_grad():
-                            noise_pred = self.unet(
-                                latent_model_input_view,
-                                t,
-                                encoder_hidden_states=step_prompt_embeds,
-                                cross_attention_kwargs=cross_attention_kwargs,
-                                return_dict=False,
-                            )[0]
-
-                    # Compute loss
-                    loss = 0
-                    self.cross_seg = None
-                    if _in_step(self.guidance_config.cross_attn, i):
-                        # Compute the Cross-Attention loss and update the cross attention mask, Please don't delete this
-                        self.compute_cross_attn_mask(cond_control_ids, cond_example_ids, cond_appearance_ids)
-
-                    if _in_step(self.guidance_config.pca_guidance, i):
-                        # Compute the PCA structure and appearance guidance
-                        # Set the select feature to key by default
-                        try:
-                            select_feature = self.guidance_config.pca_guidance.select_feature
-                        except:
-                            select_feature = "key"
-
-                        if select_feature == 'query' or select_feature == 'key' or select_feature == 'value':
-                            pca_loss = self.compute_attn_pca_loss(cond_control_ids, cond_example_ids, cond_appearance_ids,
-                                                                  i)
-                            loss += pca_loss
-                        elif select_feature == 'conv':
-                            pca_loss = self.compute_conv_pca_loss(cond_control_ids, cond_example_ids, cond_appearance_ids,
-                                                                  i)
-                            loss += pca_loss
-
-                    temp_control_ids = None
-                    if isinstance(loss, torch.Tensor):
-                        gradient = torch.autograd.grad(loss, latent_model_input_view, allow_unused=True)[0]
-                        gradient = gradient[cond_control_ids]
-                        assert gradient is not None, f"Step {i}: grad is None"
-                        score = gradient.detach()
-                        temp_control_ids: List[int] = np.arange(num_control_samples).tolist()
-
-                    # perform guidance
-                    if do_classifier_free_guidance:
-                        # Remove the example samples
-                        noise_pred = noise_pred[keep_ids]
-                        noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
-                        noise_pred = noise_pred_uncond + guidance_scale * (noise_pred_text - noise_pred_uncond)
-
-                    if do_classifier_free_guidance and guidance_rescale > 0.0:
-                        # Based on 3.4. in https://arxiv.org/pdf/2305.08891.pdf
-                        noise_pred = rescale_noise_cfg(noise_pred, noise_pred_text, guidance_rescale=guidance_rescale)
-                    # compute the previous noisy sample x_t -> x_t-1
-                    latents_view = self.scheduler.step(noise_pred, t, latents_view, score=score,
-                                                  guidance_scale=self.input_config.sd_config.grad_guidance_scale,
-                                                  indices=temp_control_ids,
-                                                  **extra_step_kwargs, return_dict=False)[0].detach()
-
-                    value_t[:, :, h_start:h_end, w_start:w_end] += latents_view
-                    count_t[:, :, h_start:h_end, w_start:w_end] += 1
-
-                latents = torch.where(count_t > 0, value_t / count_t, value_t) 
-
-                    # pdb.set_trace()
 
                 # call the callback, if provided
                 if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0):

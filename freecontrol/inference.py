@@ -96,15 +96,11 @@ def freecontrol_generate(args):
         extended_image.paste(img, (right_width, 0))
         extended_image.paste(left_half, (right_width + width_pano, 0))
         img = extended_image
-
-    # img_name = os.path.splitext(os.path.basename(args.condition_image))[0]
-    # img_save_folder_name = used_approach + "-" + img_name + "-" + config.sd_config.prompt
-    # output_folder = os.path.join("output_images", img_save_folder_name)
-    # os.makedirs(output_folder, exist_ok=True)
-    
-    image_path = os.path.join(output_folder, "output_image_test.png")
-    img.save(image_path)
-
+        print("360PanT (F) is selected.")
+    elif used_approach == "FreeControl":
+        print("FreeControl is selected")
+    else:
+        raise ValueError(f"Invalid method: {used_approach}")
 
     condition_image_latents = pipeline.invert(img=img, inversion_config=inversion_config)
 
@@ -131,9 +127,23 @@ def freecontrol_generate(args):
     os.makedirs(output_folder, exist_ok=True)
 
     for idx, image in enumerate(img_list):
-        # image.save(f"output_image_{idx}.png")
         image_path = os.path.join(output_folder, f"output_image_{idx}.png")
-        image.save(image_path)
+
+        if used_approach == "360PanT_F":
+            if control_type != "None" and idx == 0:
+                # Save the first image without cropping for this specific case
+                image.save(image_path)
+            else:
+                # Crop all other images in this approach 
+                left = 256
+                top = 0
+                width = 1024
+                height = 512
+                cropped_img = image.crop((left, top, left + width, top + height))
+                cropped_img.save(image_path)
+        else:
+            # Save the image directly for other approaches
+            image.save(image_path)
     print("Images saved as output_image_0.png, output_image_1.png, etc.")
 
 
