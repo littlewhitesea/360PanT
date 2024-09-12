@@ -5,7 +5,7 @@
 [Hai Wang](https://littlewhitesea.github.io/) • [Jing-Hao Xue](https://www.homepages.ucl.ac.uk/~ucakjxu/)
 
 [![Project](https://img.shields.io/badge/Project-Website-orange)](https://littlewhitesea.github.io/360PanT.github.io/)
-[![arXiv](https://img.shields.io/badge/arXiv-2310.18840-b31b1b.svg)](https://arxiv.org/abs/2310.18840)
+[![arXiv](https://img.shields.io/badge/arXiv-TBD-b31b1b.svg)](https://arxiv.org/pdf/%3CARXIV%20PAPER%20ID%3E)
 
 ### Jupyter Notebook and Datasets
 
