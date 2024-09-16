@@ -5,7 +5,7 @@
 [Hai Wang](https://littlewhitesea.github.io/) • [Jing-Hao Xue](https://www.homepages.ucl.ac.uk/~ucakjxu/)
 
 [![Project](https://img.shields.io/badge/Project-Website-orange)](https://littlewhitesea.github.io/360PanT.github.io/)
-[![arXiv](https://img.shields.io/badge/arXiv-TBD-b31b1b.svg)](https://arxiv.org/pdf/%3CARXIV%20PAPER%20ID%3E)
+[![arXiv](https://img.shields.io/badge/arXiv-2409.08397-b31b1b.svg)](https://arxiv.org/abs/2409.08397)
 
 ### Jupyter Notebook and Datasets
 
@@ -28,7 +28,15 @@
 ## Citation
 If you find the code helpful in your research or work, please cite our paper:
 ```Bibtex
-TBD
+@misc{wang2024360panttrainingfreetextdriven360degree,
+      title={360PanT: Training-Free Text-Driven 360-Degree Panorama-to-Panorama Translation}, 
+      author={Hai Wang and Jing-Hao Xue},
+      year={2024},
+      eprint={2409.08397},
+      archivePrefix={arXiv},
+      primaryClass={cs.CV},
+      url={https://arxiv.org/abs/2409.08397}, 
+}
 ```
 
 ## Acknowledgments
