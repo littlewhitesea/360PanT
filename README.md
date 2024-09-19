@@ -28,14 +28,11 @@
 ## Citation
 If you find the code helpful in your research or work, please cite our paper:
 ```Bibtex
-@misc{wang2024360panttrainingfreetextdriven360degree,
-      title={360PanT: Training-Free Text-Driven 360-Degree Panorama-to-Panorama Translation}, 
-      author={Hai Wang and Jing-Hao Xue},
-      year={2024},
-      eprint={2409.08397},
-      archivePrefix={arXiv},
-      primaryClass={cs.CV},
-      url={https://arxiv.org/abs/2409.08397}, 
+@article{wang2024360pant,
+  title={360PanT: Training-Free Text-Driven 360-Degree Panorama-to-Panorama Translation},
+  author={Wang, Hai and Xue, Jing-Hao},
+  journal={arXiv preprint arXiv:2409.08397},
+  year={2024}
 }
 ```
 
